@@ -2,115 +2,60 @@ name: Release Rust App
 
 on:
   push:
-    branches:
-      - "main"
+    branches: [main]
+    tags: [v*]
   pull_request:
-    branches:
-      - "main"
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
-  APP_NAME: "CPUsage"
+  APP_NAME: CPUsage
 
 jobs:
   test:
     runs-on: macos-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-rust-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run tests
-        run: cargo test --verbose
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --verbose
 
   release:
     runs-on: macos-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     permissions:
       contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-rust-${{ github.job }}-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo build --release
 
-      - name: Build application
-        run: cargo build --release
-
-      - name: Get version from Cargo.toml
-        id: get_version
+      - name: Get version
+        id: version
         run: |
-          echo "Reading version from Cargo.toml..."
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\([^"]*\)".*/\1/')
-          if [ -z "$VERSION" ]; then
-            echo "Version not found in Cargo.toml, using fallback"
-            VERSION="1.0.0"
-          fi
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\([^"]*\)".*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION"
-          echo "GITHUB_OUTPUT file exists: $(test -f $GITHUB_OUTPUT && echo 'yes' || echo 'no')"
 
-      - name: Verify version
+      - name: Create app bundle
         run: |
-          echo "Version from step: ${{ steps.get_version.outputs.version }}"
-          if [ -z "${{ steps.get_version.outputs.version }}" ]; then
-            echo "Version output is empty, this will cause issues"
-            exit 1
+          mkdir -p "${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "${APP_NAME}.app/Contents/Resources"
+
+          cp target/release/cpusage "${APP_NAME}.app/Contents/MacOS/"
+          chmod +x "${APP_NAME}.app/Contents/MacOS/cpusage"
+
+          if [ -f "cpusage.png" ]; then
+            cp cpusage.png "${APP_NAME}.app/Contents/Resources/AppIcon.png"
+            sips -s format icns "${APP_NAME}.app/Contents/Resources/AppIcon.png" --out "${APP_NAME}.app/Contents/Resources/AppIcon.icns"
           fi
 
-      - name: Create .app bundle structure
-        run: |
-          echo "Creating app bundle structure..."
-          mkdir -p "${{ env.APP_NAME }}.app/Contents/MacOS"
-          mkdir -p "${{ env.APP_NAME }}.app/Contents/Resources"
-
-          # Verify binary exists
-          if [ ! -f "target/release/cpusage" ]; then
-            echo "Error: Binary not found at target/release/cpusage"
-            exit 1
-          fi
-
-          # Copy the binary
-          cp "target/release/cpusage" "${{ env.APP_NAME }}.app/Contents/MacOS/"
-          chmod +x "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage"
-          echo "Binary copied and made executable successfully"
-
-          # Verify icon exists
-          if [ ! -f "cpusage.png" ]; then
-            echo "Warning: cpusage.png not found, skipping icon"
-          else
-            # Convert PNG icon to ICNS format and copy to Resources
-            cp "cpusage.png" "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png"
-            sips -s format icns "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png" --out "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.icns"
-            echo "Icon converted successfully"
-          fi
-
-          # Create Info.plist
-          VERSION="${{ steps.get_version.outputs.version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION="1.0.0"
-          fi
-          echo "Final version being used: $VERSION"
-          cat > "${{ env.APP_NAME }}.app/Contents/Info.plist" << EOF
+          VERSION="${{ steps.version.outputs.version }}"
+          cat > "${APP_NAME}.app/Contents/Info.plist" << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -133,172 +78,45 @@ jobs:
               <true/>
               <key>CFBundleCategory</key>
               <string>Utility</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
           </dict>
           </plist>
           EOF
-          echo "Info.plist created successfully"
 
-      - name: Verify app bundle
-        run: |
-          echo "=== App Bundle Verification ==="
-          echo "App bundle structure:"
-          find "${{ env.APP_NAME }}.app" -type f | sort
+      - name: Package app
+        run: ditto -c -k --sequesterRsrc --keepParent "${APP_NAME}.app" "${APP_NAME}.zip"
 
-          echo -e "\nBinary permissions:"
-          ls -la "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage"
-
-          echo -e "\nInfo.plist contents:"
-          cat "${{ env.APP_NAME }}.app/Contents/Info.plist"
-
-          echo -e "\nResources:"
-          ls -la "${{ env.APP_NAME }}.app/Contents/Resources/" 2>/dev/null || echo "No resources directory or empty"
-
-          echo -e "\nApp bundle ready for packaging!"
-
-      - name: Package .app bundle
-        run: |
-          echo "Packaging app bundle..."
-          ls -la "${{ env.APP_NAME }}.app" || echo "App bundle not found!"
-
-          # Verify all required files exist
-          if [ ! -d "${{ env.APP_NAME }}.app" ]; then
-            echo "Error: App bundle directory not found"
-            exit 1
-          fi
-
-          if [ ! -f "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage" ]; then
-            echo "Error: Binary not found in app bundle"
-            exit 1
-          fi
-
-          if [ ! -f "${{ env.APP_NAME }}.app/Contents/Info.plist" ]; then
-            echo "Error: Info.plist not found in app bundle"
-            exit 1
-          fi
-
-          echo "All required files present, creating package..."
-          ditto -c -k --sequesterRsrc --keepParent "${{ env.APP_NAME }}.app" "${{ env.APP_NAME }}.zip"
-
-          if [ -f "${{ env.APP_NAME }}.zip" ]; then
-            echo "Package created successfully"
-            PACKAGE_SIZE=$(du -h "${{ env.APP_NAME }}.zip" | cut -f1)
-            echo "Package size: $PACKAGE_SIZE"
-            ls -la "${{ env.APP_NAME }}.zip"
-          else
-            echo "Error: Package creation failed"
-            exit 1
-          fi
-
-      - name: Debug Release Trigger
-        run: |
-          echo "=== Release Trigger Debug ==="
-          echo "GitHub ref: ${{ github.ref }}"
-          echo "GitHub event: ${{ github.event_name }}"
-          echo "GitHub ref_name: ${{ github.ref_name }}"
-          echo "Contains 'refs/tags/v': ${{ contains(github.ref, 'refs/tags/v') }}"
-          echo "Is main branch: ${{ github.ref == 'refs/heads/main' }}"
-
-          if contains(github.ref, 'refs/tags/v'); then
-            echo "Will create tag-based release"
-          elif github.ref == 'refs/heads/main'; then
-            echo "Will create main branch release"
-          else
-            echo "No release will be created"
-          fi
-
-      - name: Create Release
-        id: create_release
+      - name: Create release
         uses: softprops/action-gh-release@v2
-        if: contains(github.ref, 'refs/tags/v')
         with:
-          name: "CPUsage v${{ steps.get_version.outputs.version || '1.0.0' }}"
-          files: "${{ env.APP_NAME }}.zip"
+          name: "${APP_NAME} v${{ steps.version.outputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          files: "${APP_NAME}.zip"
           generate_release_notes: true
+          draft: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Manual Release
-        id: create_manual_release
-        uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main' && !contains(github.ref, 'refs/tags/v')
-        with:
-          name: "CPUsage v${{ steps.get_version.outputs.version || '1.0.0' }} (main)"
-          tag_name: "main-${{ github.sha }}"
-          files: "${{ env.APP_NAME }}.zip"
-          generate_release_notes: false
-          body: |
-            Development build from main branch
-            Commit: ${{ github.sha }}
-            Version: ${{ steps.get_version.outputs.version || '1.0.0' }}
-          draft: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify Release
-        if: steps.create_release.outputs.id || steps.create_manual_release.outputs.id
-        run: |
-          echo "=== Release Verification ==="
-          RELEASE_ID="${{ steps.create_release.outputs.id || steps.create_manual_release.outputs.id }}"
-          RELEASE_URL="${{ steps.create_release.outputs.url || steps.create_manual_release.outputs.url }}"
-
-          echo "Release step outputs:"
-          echo "create_release.id: ${{ steps.create_release.outputs.id }}"
-          echo "create_release.url: ${{ steps.create_release.outputs.url }}"
-          echo "create_manual_release.id: ${{ steps.create_manual_release.outputs.id }}"
-          echo "create_manual_release.url: ${{ steps.create_manual_release.outputs.url }}"
-
-          if [ -n "$RELEASE_ID" ]; then
-            echo "Release created successfully!"
-            echo "Release ID: $RELEASE_ID"
-            echo "Release URL: $RELEASE_URL"
-
-            # Verify assets were uploaded
-            echo "Checking release assets..."
-            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -H "Accept: application/vnd.github.v3+json" \
-                 "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" | \
-                 jq -r '.assets[]?.name' || echo "Could not verify assets via API"
-          else
-            echo "Warning: Release ID not found - checking which release step ran..."
-            if contains(github.ref, 'refs/tags/v'); then
-              echo "Expected tag-based release but no ID found"
-            elif github.ref == 'refs/heads/main'; then
-              echo "Expected main branch release but no ID found"
-            fi
-          fi
-
-      - name: Clean up
+      - name: Cleanup
         if: always()
-        run: |
-          echo "Cleaning up temporary files..."
-          rm -rf "${{ env.APP_NAME }}.app" || true
+        run: rm -rf "${APP_NAME}.app"
 
-  auto-tag:
+  versioning:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Install semantic-release
-        run: npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/github @semantic-release/exec
+      - run: npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/github @semantic-release/exec
 
-      - name: Run semantic-release
-        run: |
-          semantic-release
+      - run: semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
