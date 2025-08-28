@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/arian24b/cpusage/compare/v1.0.1...v1.1.0) (2025-08-28)
+
+
+### Features
+
+* Enhance GitHub Actions workflow with version verification and fallback handling ([6d1ac76](https://github.com/arian24b/cpusage/commit/6d1ac76918cabdda4cc4d6b6013b1460e0d85c85))
+
 ## [1.0.1](https://github.com/arian24b/cpusage/compare/v1.0.0...v1.0.1) (2025-08-28)
 
 
