@@ -37,7 +37,7 @@ jobs:
         run: cargo install cargo-bundle
 
       - name: Build and Bundle application
-        run: cargo test --verbose && cargo bundle --release --verbose
+        run: cargo test --verbose && cargo bundle --release
 
       - name: Package .app bundle
         run: |
