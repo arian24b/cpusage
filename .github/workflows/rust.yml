@@ -191,15 +191,83 @@ jobs:
             exit 1
           fi
 
+      - name: Debug Release Trigger
+        run: |
+          echo "=== Release Trigger Debug ==="
+          echo "GitHub ref: ${{ github.ref }}"
+          echo "GitHub event: ${{ github.event_name }}"
+          echo "GitHub ref_name: ${{ github.ref_name }}"
+          echo "Contains 'refs/tags/v': ${{ contains(github.ref, 'refs/tags/v') }}"
+          echo "Is main branch: ${{ github.ref == 'refs/heads/main' }}"
+
+          if contains(github.ref, 'refs/tags/v'); then
+            echo "Will create tag-based release"
+          elif github.ref == 'refs/heads/main'; then
+            echo "Will create main branch release"
+          else
+            echo "No release will be created"
+          fi
+
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v2
+        if: contains(github.ref, 'refs/tags/v')
         with:
           name: "CPUsage v${{ steps.get_version.outputs.version || '1.0.0' }}"
-          tag_name: ${{ github.ref_name }}
           files: "${{ env.APP_NAME }}.zip"
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Manual Release
+        id: create_manual_release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' && !contains(github.ref, 'refs/tags/v')
+        with:
+          name: "CPUsage v${{ steps.get_version.outputs.version || '1.0.0' }} (main)"
+          tag_name: "main-${{ github.sha }}"
+          files: "${{ env.APP_NAME }}.zip"
+          generate_release_notes: false
+          body: |
+            Development build from main branch
+            Commit: ${{ github.sha }}
+            Version: ${{ steps.get_version.outputs.version || '1.0.0' }}
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Release
+        if: steps.create_release.outputs.id || steps.create_manual_release.outputs.id
+        run: |
+          echo "=== Release Verification ==="
+          RELEASE_ID="${{ steps.create_release.outputs.id || steps.create_manual_release.outputs.id }}"
+          RELEASE_URL="${{ steps.create_release.outputs.url || steps.create_manual_release.outputs.url }}"
+
+          echo "Release step outputs:"
+          echo "create_release.id: ${{ steps.create_release.outputs.id }}"
+          echo "create_release.url: ${{ steps.create_release.outputs.url }}"
+          echo "create_manual_release.id: ${{ steps.create_manual_release.outputs.id }}"
+          echo "create_manual_release.url: ${{ steps.create_manual_release.outputs.url }}"
+
+          if [ -n "$RELEASE_ID" ]; then
+            echo "Release created successfully!"
+            echo "Release ID: $RELEASE_ID"
+            echo "Release URL: $RELEASE_URL"
+
+            # Verify assets were uploaded
+            echo "Checking release assets..."
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.v3+json" \
+                 "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" | \
+                 jq -r '.assets[]?.name' || echo "Could not verify assets via API"
+          else
+            echo "Warning: Release ID not found - checking which release step ran..."
+            if contains(github.ref, 'refs/tags/v'); then
+              echo "Expected tag-based release but no ID found"
+            elif github.ref == 'refs/heads/main'; then
+              echo "Expected main branch release but no ID found"
+            fi
+          fi
 
       - name: Clean up
         if: always()
