@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/arian24b/cpusage/compare/v1.1.0...v1.2.0) (2025-08-28)
+
+
+### Features
+
+* Enhance app bundle creation with verification and improved error handling ([dd78073](https://github.com/arian24b/cpusage/commit/dd7807309bf96eba7c29e436a04cf2d64870ebdd))
+
 # [1.1.0](https://github.com/arian24b/cpusage/compare/v1.0.1...v1.1.0) (2025-08-28)
 
 
