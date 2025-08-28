@@ -33,12 +33,15 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build application
-        run: cargo test --verbose && cargo build --release --verbose
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle
+
+      - name: Build and Bundle application
+        run: cargo test --verbose && cargo bundle --release --verbose
 
       - name: Package .app bundle
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "target/release/${{ env.APP_NAME }}.app" "target/release/${{ env.APP_NAME }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "target/release/bundle/osx/${{ env.APP_NAME }}.app" "target/release/${{ env.APP_NAME }}.zip"
 
       - name: Semantic Release
         id: semantic
