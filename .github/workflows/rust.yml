@@ -1,20 +1,60 @@
-name: Rust
+name: Release Rust App
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - "main"
+
 
 env:
   CARGO_TERM_COLOR: always
+  APP_NAME: "CPUsage"
 
 jobs:
-  build:
+  release:
     runs-on: macos-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build application
+        run: cargo test --verbose && cargo build --release --verbose
+
+      - name: Package .app bundle
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "target/release/${{ env.APP_NAME }}.app" "target/release/${{ env.APP_NAME }}.zip"
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          branch: main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Asset
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.semantic.outputs.new_release_upload_url }}
+          asset_path: ./target/release/${{ env.APP_NAME }}.zip
+          asset_name: ${{ env.APP_NAME }}-${{ steps.semantic.outputs.new_release_version }}.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
