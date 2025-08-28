@@ -79,15 +79,30 @@ jobs:
 
       - name: Create .app bundle structure
         run: |
+          echo "Creating app bundle structure..."
           mkdir -p "${{ env.APP_NAME }}.app/Contents/MacOS"
           mkdir -p "${{ env.APP_NAME }}.app/Contents/Resources"
 
+          # Verify binary exists
+          if [ ! -f "target/release/cpusage" ]; then
+            echo "Error: Binary not found at target/release/cpusage"
+            exit 1
+          fi
+
           # Copy the binary
           cp "target/release/cpusage" "${{ env.APP_NAME }}.app/Contents/MacOS/"
+          chmod +x "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage"
+          echo "Binary copied and made executable successfully"
 
-          # Convert PNG icon to ICNS format and copy to Resources
-          cp "cpusage.png" "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png"
-          sips -s format icns "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png" --out "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.icns"
+          # Verify icon exists
+          if [ ! -f "cpusage.png" ]; then
+            echo "Warning: cpusage.png not found, skipping icon"
+          else
+            # Convert PNG icon to ICNS format and copy to Resources
+            cp "cpusage.png" "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png"
+            sips -s format icns "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.png" --out "${{ env.APP_NAME }}.app/Contents/Resources/AppIcon.icns"
+            echo "Icon converted successfully"
+          fi
 
           # Create Info.plist
           VERSION="${{ steps.get_version.outputs.version }}"
@@ -123,23 +138,58 @@ jobs:
           </dict>
           </plist>
           EOF
+          echo "Info.plist created successfully"
 
       - name: Verify app bundle
         run: |
-          echo "App bundle created successfully"
-          ls -la "${{ env.APP_NAME }}.app/Contents/"
-          echo "Info.plist contents:"
+          echo "=== App Bundle Verification ==="
+          echo "App bundle structure:"
+          find "${{ env.APP_NAME }}.app" -type f | sort
+
+          echo -e "\nBinary permissions:"
+          ls -la "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage"
+
+          echo -e "\nInfo.plist contents:"
           cat "${{ env.APP_NAME }}.app/Contents/Info.plist"
 
-      - name: Clean up
-        if: always()
-        run: |
-          echo "Cleaning up temporary files..."
-          rm -rf "${{ env.APP_NAME }}.app" || true
+          echo -e "\nResources:"
+          ls -la "${{ env.APP_NAME }}.app/Contents/Resources/" 2>/dev/null || echo "No resources directory or empty"
+
+          echo -e "\nApp bundle ready for packaging!"
 
       - name: Package .app bundle
         run: |
+          echo "Packaging app bundle..."
+          ls -la "${{ env.APP_NAME }}.app" || echo "App bundle not found!"
+
+          # Verify all required files exist
+          if [ ! -d "${{ env.APP_NAME }}.app" ]; then
+            echo "Error: App bundle directory not found"
+            exit 1
+          fi
+
+          if [ ! -f "${{ env.APP_NAME }}.app/Contents/MacOS/cpusage" ]; then
+            echo "Error: Binary not found in app bundle"
+            exit 1
+          fi
+
+          if [ ! -f "${{ env.APP_NAME }}.app/Contents/Info.plist" ]; then
+            echo "Error: Info.plist not found in app bundle"
+            exit 1
+          fi
+
+          echo "All required files present, creating package..."
           ditto -c -k --sequesterRsrc --keepParent "${{ env.APP_NAME }}.app" "${{ env.APP_NAME }}.zip"
+
+          if [ -f "${{ env.APP_NAME }}.zip" ]; then
+            echo "Package created successfully"
+            PACKAGE_SIZE=$(du -h "${{ env.APP_NAME }}.zip" | cut -f1)
+            echo "Package size: $PACKAGE_SIZE"
+            ls -la "${{ env.APP_NAME }}.zip"
+          else
+            echo "Error: Package creation failed"
+            exit 1
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -150,6 +200,12 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up
+        if: always()
+        run: |
+          echo "Cleaning up temporary files..."
+          rm -rf "${{ env.APP_NAME }}.app" || true
 
   auto-tag:
     runs-on: ubuntu-latest
