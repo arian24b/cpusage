@@ -1,6 +1,6 @@
 [package]
 name = "cpusage"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ sysinfo = { version = "0.31", default-features = false, features = ["system"] }
 [package.metadata.bundle]
 name = "CPUsage"
 identifier = "com.arian24b.cpusage"
-version = "0.1.0"
+version = "1.0.0"
 copyright = "Copyright (c) 2025 arian24b"
 category = "Utility"
 short_description = "CPU Usage Monitor"
