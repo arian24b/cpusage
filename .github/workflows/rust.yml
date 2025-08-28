@@ -43,21 +43,9 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent "target/release/bundle/osx/${{ env.APP_NAME }}.app" "target/release/${{ env.APP_NAME }}.zip"
 
-      - name: Semantic Release
-        id: semantic
-        uses: cycjimmy/semantic-release-action@v4
+      - name: Semantic Release and Upload
+        uses: codfish/semantic-release-action@v4
         with:
-          branch: main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Release Asset
-        if: steps.semantic.outputs.new_release_published == 'true'
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.semantic.outputs.new_release_upload_url }}
-          asset_path: ./target/release/${{ env.APP_NAME }}.zip
-          asset_name: ${{ env.APP_NAME }}-${{ steps.semantic.outputs.new_release_version }}.zip
-          asset_content_type: application/zip
+          upload_assets: "target/release/${{ env.APP_NAME }}.zip"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
