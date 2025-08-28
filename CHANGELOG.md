@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/arian24b/cpusage/compare/v1.0.0...v1.0.1) (2025-08-28)
+
+
+### Bug Fixes
+
+* Update conditions for test and release jobs in GitHub Actions workflow ([0305124](https://github.com/arian24b/cpusage/commit/0305124f9f7fb11b69770b8fbd74dab8d317f49d))
+
 # 1.0.0 (2025-08-28)
 
 
