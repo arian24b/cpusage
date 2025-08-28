@@ -4,19 +4,37 @@ on:
   push:
     branches:
       - "main"
+    tags:
+      - "v*"
   pull_request:
     branches:
       - "main"
-
 
 env:
   CARGO_TERM_COLOR: always
   APP_NAME: "CPUsage"
 
 jobs:
+  test:
+    runs-on: macos-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --verbose
+
   release:
     runs-on: macos-latest
-
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     permissions:
       contents: write
       pull-requests: write
@@ -33,19 +51,55 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-bundle
-        run: cargo install cargo-bundle
+      - name: Build application
+        run: cargo build --release
 
-      - name: Build and Bundle application
-        run: cargo test --verbose && cargo bundle --release
+      - name: Create .app bundle structure
+        run: |
+          mkdir -p "${{ env.APP_NAME }}.app/Contents/MacOS"
+          mkdir -p "${{ env.APP_NAME }}.app/Contents/Resources"
+
+          # Copy the binary
+          cp "target/release/cpusage" "${{ env.APP_NAME }}.app/Contents/MacOS/"
+
+          # Create Info.plist
+          cat > "${{ env.APP_NAME }}.app/Contents/Info.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>cpusage</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.arian24b.cpusage</string>
+              <key>CFBundleName</key>
+              <string>CPUsage</string>
+              <key>CFBundleVersion</key>
+              <string>0.1.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>0.1.0</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>CFBundleCategory</key>
+              <string>Utility</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+          </dict>
+          </plist>
+          EOF
 
       - name: Package .app bundle
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "target/release/bundle/osx/${{ env.APP_NAME }}.app" "target/release/${{ env.APP_NAME }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "${{ env.APP_NAME }}.app" "${{ env.APP_NAME }}.zip"
 
-      - name: Semantic Release and Upload
-        uses: codfish/semantic-release-action@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          upload_assets: "target/release/${{ env.APP_NAME }}.zip"
+          files: "${{ env.APP_NAME }}.zip"
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
