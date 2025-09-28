@@ -4,21 +4,10 @@ version = "1.2.0"
 edition = "2021"
 
 [dependencies]
-cocoa = "0.25"
-objc = "0.2"
 sysinfo = { version = "0.31", default-features = false, features = ["system"] }
-
-[package.metadata.bundle]
-name = "CPUsage"
-identifier = "com.arian24b.cpusage"
-version = "1.2.0"
-copyright = "Copyright (c) 2025 arian24b"
-category = "Utility"
-short_description = "CPU Usage Monitor"
-long_description = "A macOS status bar app that displays real-time CPU usage"
-
-[lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ["cfg(cargo_clippy)"] }
+tray-icon = "0.19"
+winit = "0.30"
+gtk = "0.18"
 
 [profile.release]
 opt-level = "s"        # Optimize for size
